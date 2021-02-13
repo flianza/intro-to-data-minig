@@ -83,7 +83,7 @@ Se cuenta con información de 68 personas de ambos sexos mayores de 60 años, a 
 |sexo          |Sexo del paciente      |0: Femenino, 1: Masculino       |
 |imc           |Índice de masa corporal|valor expresado en $[kg/m^2]$   |
 |perimetro_abdo|Perímetro abdominal    |valor expresado en $[cm]$       |
-|hto           |Hematocrito            |valor expresado en $\%$          |
+|hto           |Hematocrito            |valor expresado en $\%$         |
 |glicemia      |Glicemia               |valor expresado en $[mg/dL]$    |
 |ct            |Colesterol Total       |valor expresado en $[mg/dL]$    |
 |hdl           |Colesterol HDL         |valor expresado en $[mg/dL]$    |
@@ -410,16 +410,27 @@ Explique la metodología utilizada.
 
 ***
 
+Para identificar grupos dentro de los pacientes, utilizaremos realizaremos clustering.
+
+La idea del clustering es agrupar observaciones similares con el fin de armar grupos heterogeneos entre si.
+
+Utilizaremos el algoritmo de clustering `kmeans`. El mismo tiene como objetivo la partición de un conjunto de _n observaciones_ en _k grupos_ en el que cada observación pertenece al grupo cuyo valor medio es más cercano.
+
+Como kmeans se basa en distancias, comenzaremos por estandarizar las variables numericas que tenemos.
+
 ```{r}
 cardio_numericas_std <- scale(cardio_numericas)
 ```
 
-```{r}
+Utilizaremos el indice de silhouette para determinar la cantidad optima de _k_. El mismo es una medida que nos dice que tan similar es un individuo a su cluster comparado con los otros clusters. 
+
+```{r fig.cap='Indice de Silhouette segun el numero de clusters a considerar'}
 fviz_nbclust(cardio_numericas_std, kmeans, method = "silhouette") +
   labs(title = "Número óptimo de clusters a considerar",
        subtitle = "Indice Silhouette")
-
 ```
+
+Por lo tanto, utilizaremos $k=2$. Esto significa que estamos buscando dos grupos de personas con caracteristicas distintas entre si.
 
 ```{r}
 clustering <- kmeans(cardio_numericas_std, centers = 2)
@@ -430,12 +441,12 @@ cardio_numericas$cluster <- factor(clustering$cluster)
 
 ```{r include=FALSE}
 plot_variable_numerica_cluster <- function(variable) {
-  mean_value <- mean(cardio[[variable]])
+  median_value <- median(cardio[[variable]])
   
   ggplot(cardio) +
     aes_string(x = 'cluster', y = variable) +
     geom_boxplot() +
-    geom_hline(yintercept = mean_value, linetype = 'dashed') +
+    geom_hline(yintercept = median_value, linetype = 'dashed') +
     labs(x = "", y = "", title = "")
 }
 
@@ -449,7 +460,29 @@ plot_variables_numericas_cluster <- function() {
 }
 ```
 
-```{r fig.dim=c(10, 10)}
+Analizaremos cada variable por cada uno de los clusters generados por kmeans.
+
+```{r echo=FALSE}
+formula_para_describir <- as.formula(
+  paste0(paste(colnames(cardio_numericas_std), collapse = " + "), " ~ cluster") 
+)
+
+tabla_resumen_cluster <- describeBy(
+  formula_para_describir, 
+  mat = TRUE, 
+  data = cardio_numericas
+)
+
+tabla_resumen_cluster %>% 
+  mutate(variable = rownames(.),
+         cv = 100 * sd / abs(mean) ) %>% 
+  rename(cluster = group1) %>% 
+  select(variable, cluster, n, mean, median, cv, min, max) %>% 
+  arrange(variable) %>% 
+  format_table('Medidas resumen de cada variable por cluster')
+```
+
+```{r echo=FALSE, fig.dim=c(10, 10), fig.cap='Boxplot de variables por cluster'}
 total_plot <- ggarrange(plotlist = plot_variables_numericas_cluster(),
                         labels = c("Col. Total", "Glicemia", "Col. HDL", "Hematocrito", "IMC", "Per. Abdominal", "Trigliceridos"),
                         ncol = 3, nrow = 3)
@@ -457,14 +490,63 @@ total_plot <- ggarrange(plotlist = plot_variables_numericas_cluster(),
 annotate_figure(total_plot, top = text_grob("Variables por Cluster", face = "bold", size = 16))
 ```
 
-```{r}
+```{r echo=FALSE, fig.cap='Sexo segun Cluster'}
 ggplot(cardio) +
   aes_string(x = 'cluster', fill = 'sexo') +
-  geom_bar(position = 'fill', show.legend = FALSE) +
-  labs(x = "", y = "", title = "")
+  geom_bar(position = 'fill') +
+  labs(x = "Cluster", y = "Proporcion", title = "Sexo segun Cluster")
 ```
 
+De los datos y graficos podemos determinar lo siguiente:
+
+__Cluster 1__:
+
+- _Colesterol total:_ mediana igual a la global, con un valor de `207.50mg/dL`.
+- _Glicemia:_ mediana por encima de la global, con un valor de `1.01mg/dL`.
+- _Colesterol HD:_ mediana por debajo de la global, con un valor de `50.00mg/dL`.
+- _Hematocrito:_ mediana por encima de la global, con un valor de `44.00%`.
+- _IMC:_ mediana muy por encima de la global, con un valor de `33.09kg/m2`.
+- _Perimetro Abdominal:_ mediana muy por encima de la global, con un valor de `113.00cm`.
+- _Trigliceridos:_ mediana similar a la global, con un valor de `1.16mg/dL`.
+- _Sexo:_ en su mayoria hombres.
+
+_Posible nombre:_ "Personas con sobrepeso"
+
+__Cluster 2__:
+
+- _Colesterol total:_ mediana igual a la global, con un valor de `207.50mg/dL`.
+- _Glicemia:_ mediana por debajo de la global, con un valor de `0.93mg/dL`.
+- _Colesterol HDL:_ mediana similar a la global, con un valor de `58.50mg/dL`.
+- _Hematocrito:_ mediana por debajo de la global, con un valor de `40.35%`.
+- _IMC:_ mediana por debajo de la global, con un valor de `26.35kg/m2`.
+- _Perimetro Abdominal:_ mediana por debajo de la global, con un valor de `92.50cm`.
+- _Trigliceridos:_ mediana similar a la global, con un valor de `1.15mg/dL`.
+- _Sexo:_ en su mayoria mujeres.
+
+_Posible nombre:_ "Personas con peso saludable"
+
+Resumiendo:
+
+| Variable                | Cluster 1  | Cluster 2  |
+|-------------------------|------------|------------|
+| Colesterol total        | Medio      | Medio      |
+| Glicemia                | Alto       | Medio-Bajo |
+| Colesterol hdl          | Bajo       | Medio      |
+| Hematocrito             | Alto       | Medio-Bajo |
+| Indice de masa corporal | Alto       | Bajo       |
+| Perimetro abdominal     | Alto       | Bajo       |
+| Trigliceridos           | Medio-Alto | Medio      |
+
+
 # Clasificacion
+
+***
+
+<em>
+Construya la variable dicotómica ‘obesidad’ (índice de masa corporal mayor a 30) y construya un modelo predictivo utilizando sólo el sexo del paciente y las variables de los resultados de las pruebas de laboratorio (hematocrito, glicemia, colesterol Total, colesterol HDL y triglicéridos). ¿Qué capacidad predictiva tiene ese modelo?
+</em>
+
+***
 
 ```{r}
 cardio_clasificacion <- cardio %>% 
