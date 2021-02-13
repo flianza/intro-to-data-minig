@@ -1,0 +1,516 @@
+---
+title: "Trabajo Final"
+subtitle: |
+  | Introducción al Data Mining
+  | Maestría en Explotación de Datos y Gestión del Conocimiento  
+  | Universidad Austral 
+author: |
+  | Franco Lianza
+output: 
+  bookdown::html_document2:
+    toc: TRUE
+    toc_float: true
+    df_print: paged
+    theme: united
+    fig_width: 7
+    fig_height: 6
+    fig_caption: true
+---
+
+<style>
+div.main-container {
+    max-width: 1600px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+</style>
+
+```{r include=FALSE}
+paquetes <- c('here', 'DT', 'readxl', 'psych', 'corrplot', 'tidyverse', 'ggplot2', 'cowplot', 'factoextra', 'GGally', 'ggpubr', 'caret', 'rpart', 'rpart.plot', 'Metrics', 'ROCR', 'reshape2')
+
+instalados <- paquetes %in% rownames(installed.packages())
+if (any(instalados == FALSE)) {
+  install.packages(paquetes[!instalados])
+}
+
+for (package in paquetes) library(package, character.only = TRUE)
+```
+
+```{r include=FALSE}
+set.seed(123)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.align = "center")
+
+theme_set(theme_classic())
+```
+
+```{r include=FALSE}
+setwd(here())
+```
+
+```{r setup, include=FALSE}
+format_table <- function(table_to_format, captiontitle='') {
+  numeric_columns <- table_to_format %>% 
+    select_if(is.numeric) %>%
+    colnames
+  
+  table_to_format %>% 
+    datatable(caption = captiontitle, 
+              options = list(scrollX = TRUE, pageLength = 10, dom = 'tip'),
+              filter = 'none', selection='none') %>% 
+    formatRound(columns = numeric_columns, digits = 2)
+}
+```
+
+
+```{r include=FALSE}
+cardio <- 
+  read_excel("cardio.xls") %>% 
+  mutate(sexo = ifelse(sexo == 0, 'F', 'M')) %>% 
+  mutate(id = factor(id))
+```
+
+# Introduccion
+
+<h4>ESTUDIO DE PREVENCIÓN CARDIOVASCULAR EN EL ADULTO MAYOR</h4>
+
+El incremento de la expectativa de vida ha generado un aumento en la incidencia de enfermedades cardiovasculares y neurológicas. En los adultos mayores es donde se conjugan diversas patologías con alta morbi-mortalidad requiriendo gran cantidad de recursos materiales y humanos. Dado que, la determinación en análisis sanguíneos de rutina permite la detección de alteraciones que en determinadas circunstancias podrían progresar a patologías definidas con serias repercusiones cardiovasculares en este grupo poblacional, se estudió la frecuencia en adultos mayores de diversas patologías subclínicas y la asociación entre los factores de riesgo cardiovascular y dichas patologías subclínicas.
+
+Se cuenta con información de 68 personas de ambos sexos mayores de 60 años, a quienes se les midieron las siguientes variables (disponibles en el archivo ‘cardio.xls’):
+
+|Variable      |Descripcion            |Medidas                         |
+|--------------|-----------------------|--------------------------------|
+|sexo          |Sexo del paciente      |0: Femenino, 1: Masculino       |
+|imc           |Índice de masa corporal|valor expresado en $[kg/m^2]$   |
+|perimetro_abdo|Perímetro abdominal    |valor expresado en $[cm]$       |
+|hto           |Hematocrito            |valor expresado en $\%$          |
+|glicemia      |Glicemia               |valor expresado en $[mg/dL]$    |
+|ct            |Colesterol Total       |valor expresado en $[mg/dL]$    |
+|hdl           |Colesterol HDL         |valor expresado en $[mg/dL]$    |
+|tgd           |Triglicéridos          |valor expresado en $[mg/dL]$    |
+
+```{r}
+cardio %>% 
+  format_table('Datos del dataset cardio.xlsx')
+```
+
+
+# Analisis exploratorio
+
+***
+
+<em>Describa la distribución univariada de las variables presente en el conjunto de datos. ¿Se evidencian outliers en alguna de ellas?</em>
+
+***
+
+Comenzaremos analizando los estadisticos descriptivos de cada una de las variables.
+
+```{r}
+summary(cardio)
+```
+
+A simple vista se puede observar que la variable `tgd` posee outliers, ya que el valor maximo de dicha variable es `5.210` y su 3er cuartil es de `1.460`. 
+
+Revisaremos el comportamiento de cada una de las variables a continuacion.
+
+```{r include=FALSE}
+plot_continuous_variable <- function(variable, title, xlab = '') {
+  plt_hist <- cardio %>% 
+    ggplot() +
+    aes_string(x = variable) +
+    geom_histogram(fill = "lightgray", col = "black") +
+    labs(x = '', y = 'Cantidad Obs', title = title)
+  
+  plt_boxplot <- cardio %>% 
+    ggplot() +
+    aes_string(x = variable) +
+    geom_boxplot(fill = "lightgray", col = "black") +
+    labs(x = xlab)
+  
+  plot_grid(plt_hist, plt_boxplot,
+            ncol = 1, rel_heights = c(2, 1),
+            align = 'v', axis = 'lr') 
+}
+```
+
+## Indice de masa corporal (imc)
+```{r fig.cap='Distribucion de la variable Indice de Masa Corporal (imc)'}
+plot_continuous_variable('imc', 'Indice de Masa Corporal')
+```
+
+La variable `imc` presenta 3 valores extremos segun el boxplot.
+
+Su media se encuentra en `29.27` y es asimetrica hacia la derecha.
+
+## Perimetro abdominal
+
+```{r fig.cap='Distribucion de la variable Perimetro Abdominal (perimetro_abdo)'}
+plot_continuous_variable('perimetro_abdo', 'Perimetro Abdominal')
+```
+
+La variable `perimetro_abdo` presenta 2 valores extremos segun el boxplot.
+
+La media se encuentra en `100.40` y es asimetrica hacia la derecha.
+
+## Hematocrito
+
+```{r fig.cap='Distribucion de la variable Hematocrito (hto)'}
+plot_continuous_variable('hto', 'Hematocrito')
+```
+
+La variable `hto` presenta un valor extremo segun el boxplot (28.20). Dicho valor se encuentra muy alejado del resto de los datos.
+
+La media se encuentra situada en `41.96`.
+
+## Glicemia
+
+```{r fig.cap='Distribucion de la variable Glicemia (glicemia)'}
+plot_continuous_variable('glicemia', 'Glicemia [mg/dL]')
+```
+
+La variable `glicemia` presenta dos valores extremos segun el boxplot.
+
+La media se encuentra en `0.99` y es asimetrica hacia la derecha.
+
+## Colesterol Total
+
+```{r fig.cap='Distribucion de la variable Colesterol Total (ct)'}
+plot_continuous_variable('ct', 'Colesterol Total [mg/dL]')
+```
+
+La variable `ct` no presenta valores extremos.
+
+La media se encuentra en `212.9`. Parece estar distribuida de manera bastante "uniforme".
+
+## Colesterol HDL
+
+```{r fig.cap='Distribucion de la variable Colesterol HDL (hdl)'}
+plot_continuous_variable('hdl', 'Colesterol HDL [mg/dL]')
+```
+
+La variable `hdl` presenta un valor extremo segun el boxplot.
+
+La media se encuentra en `57.12`.
+
+## Triglicéridos {#analisis-tgd}
+
+```{r fig.cap='Distribucion de la variable Triglicéridos (tgd)'}
+plot_continuous_variable('tgd', 'Triglicéridos [mg/dL]')
+```
+
+La variable `tgd` presenta varios valores extremos segun el boxplot, todos hacia la derecha.
+
+La media se encuentra en `1.356`.
+
+Dichas observaciones son las siguientes:
+```{r echo=FALSE}
+outliers <- boxplot.stats(cardio$tgd)$out
+outliers_indexes <- which(cardio$tgd %in% c(outliers))
+
+cardio[outliers_indexes, ] %>% 
+  format_table('Outliers variable tgd')
+```
+
+Tendremos que tener en cuenta estas observaciones para las acciones que tomemos de aca en adelante.
+
+## Sexo
+
+```{r fig.cap='Distribucion de la variable Sexo (sexo)'}
+cardio %>% 
+  ggplot() +
+  aes(x = sexo, y = ..count.. / sum(..count..), fill = sexo) +
+  geom_bar(width = 0.75) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = '', y = 'Porcentaje', title = 'Sexo')
+```
+
+La variable sexo parece estar equilibrada en femenino y masculino.
+
+# Matriz de Correlacion {#matriz-correlaciones}
+
+***
+
+<em>Calcule e interprete la matriz de correlaciones.</em>
+
+***
+
+```{r include=FALSE}
+cardio_numericas <- cardio %>% 
+  select(-one_of(c('id', 'sexo')))
+```
+
+```{r}
+cor(cardio_numericas) 
+```
+
+Visualmente:
+
+```{r fig.cap='Matriz de Correlaciones'}
+cardio_numericas %>% 
+  cor() %>% 
+  corrplot(order = "hclust", tl.srt = 45)
+```
+
+De lo anterior podemos ver que:
+
+- La variable `imc` y `perimetro_abdo` se encuentran altamente correladas de manera positiva, siendo su indice `0.82`. Esto significa que cuando aumenta el valor de algunas de ellas, la otra aumenta propocionalmente.
+- La variable `hdl` se encuentra levemente correlada de forma negativa con `tgd` siendo su indice `-0.25`.
+- La variable `tgd` se encuentra levemente correlada de forma positiva con `ct` siendo su indice `0.30`.
+
+Revisaremos el grafico de puntos entre `imc` y `perimetro_abdo`.
+
+```{r fig.cap='Scatter plot de Indice de Masa Corporal y Perimetro Abdominal'}
+ggplot(cardio) +
+  aes(x = imc, y = perimetro_abdo) +
+  geom_point() +
+  labs(x = 'Indice de Masa Corporal [kg/m2]', y = 'Perimetro Abdominal [cm]', title = 'IMC vs Perimetro Abdominal')
+```
+
+Es logico que estas variables esten correladas, debido a que si una persona tiene un mayor perimetro abdominal, es esperable que su peso sea mayor. 
+Como el imc se calcula de la forma $IMC=Peso/Estatura^2$ entonces, a mayor peso mayor imc.
+
+# PCA
+
+***
+
+<em>
+Realice un análisis de componentes principales.
+
+¿Qué porcentaje de la variabilidad total logran explicar las dos primeras componentes? 
+
+¿Es posible realizar una interpretación sobre los componentes? ¿Cuál? 
+
+¿Logran esas componentes diferenciar a los pacientes según el sexo?
+</em>
+
+***
+
+El PCA nos permite transformar un conjunto de variables numericas correladas en otro no correlado.
+
+En este caso vamos a decirle a PCA que estandarice las variables debido a la alta variabilidad de los datos y a sus diferentes unidades de medida. A su vez, en este contexto no es representativa la diferencia entre ellas, por ejemplo `hto` medido en $%$ y `perimetro_abdo` medido en `cm`.
+
+Aplicaremos PCA teniendo en cuenta lo dicho y utilizando todas las variables excepto `sexo` debido a que es categorica.
+
+## Sin tratamiento de outliers
+
+```{r}
+pca_cardio <- prcomp(cardio_numericas, scale = TRUE)
+
+summary(pca_cardio)
+```
+
+Podemos observar que con las dos primeras componentes `PC1` y `PC2` explicamos el `0.4931` de la varianza total.
+
+Obtenemos aproximadamente un 80% de la variacion total en la `PC4`.
+
+Revisaremos sus eigenvectors para interpretar cada una de ellas.
+
+```{r}
+pca_cardio$rotation
+```
+
+A partir de la salida anterior, podemos concluir que:
+
+- La `PC1` explica mayormente las variables `imc` y `perimetro_abdo` siendo sus valores `0.6041206` y `0.5986670` respectivamente. Esto era esperable, ya que vimos en la [matriz de correlaciones](#matriz-correlaciones) que dichas variables estaban altamente correladas.
+- La `PC2` explica mayormente las variables `ct` y `tgd` siendo sus valores `0.5398182` y `0.7324829` respectivamente. Esto tambien era esperable, ya que vimos en la matriz de correlaciones que dichas variables estaban levemente correladas.
+- La `PC3` explica mayormente las variables `ct` y `hdl` siendo sus valores `0.5547835` y `0.5827381` respectivamente.
+- La `PC4` explica mayormente las variables `glicemia`, `hdl` y `hto`.
+
+Realizaremos un biplot entre `PC1` y `PC2` para visualizarlo mejor.
+
+```{r fig.cap='Biplot de PC1 y PC2 sin tratamiento de outliers'}
+biplot(pca_cardio)
+```
+
+Como mencionabamos anteriormente, los vectores de `imc` y `perimetro_abdo` son aproximadamente iguales. Esto significa que ambas aportan "la misma informacion" a la variabilidad de los datos. Algo similar ocurre con `tgd` y `ct` pero en menor medida.
+
+En el grafico podemos tambien observar que:
+
+- El individuo 2 posee alto `tgd` y `ct`. Se encuentra muy alejado de los demas, por lo que es probable que sea un outlier.
+- Los individuos 68 y 32 son los que tienen mas `hto`.
+- El individuo 51 posee alto `imc` y `perimetro_abdo`.
+- El individuo 35 es el que posee mayor `hdl`.
+
+Sin embargo, remitiendonos al [analisis exploratorio](#analisis-tgd), habian algunos valores extremos en la variable `tgd`. Revisaremos la contribucion de cada observacion al PCA realizado sobre las primeras dos componentes.
+
+```{r fig.cap='Contribucion de los individuos a PC1 y PC2 sin tratamiento de outliers'}
+fviz_contrib(pca_cardio, choice = "ind", axes = 1:2)
+```
+
+Como era de esperarse, podemos observar que el individuo 2 es el que mayor contribuye al PCA. Dicho individuo es un outlier para la variable `tgd`.
+
+El PCA es una tecnica suceptible a los valores extremos, por lo que repetiremos el analisis eliminando dicha observacion.
+
+## Con tratamiento de outliers
+
+```{r}
+cardio_numericas_pca <- cardio_numericas[-c(2), ]
+
+pca_cardio <- prcomp(cardio_numericas_pca, scale = TRUE)
+
+summary(pca_cardio)
+```
+
+Las nuevas componentes explican la varianza de una manera similar al analisis anterior.
+
+```{r}
+pca_cardio$rotation
+```
+
+Comparando con el analisis anterior podemos determinar que:
+
+- La `PC1` no cambio demasiado, sigue explicando mayormente tanto `imc` como `perimetro_abdo`.
+- La `PC2` ahora explica mayormente la variabilidad de `tgd` y en menor medida `hto` y `hdl`, con sus valores `0.7727193`, `0.3622752` y `-0.3186812` respectivamente.
+- La `PC2` ahora explica mayormente la variabilidad de `ct` y en menor medida `hdl` y `glicemia`, siendo sus valores `0.77679262`, `0.48997356` y `-0.32981724` respectivamente.
+- La `PC4` sigue explicando mayormente `glicemia` y en menor medida `hdl`.
+
+Repitiendo el bitplot anterior:
+
+```{r fig.cap='Biplot de PC1 y PC2 con tratamiento de outliers'}
+biplot(pca_cardio)
+```
+
+Y revisando nuevamente la contribucion de cada individuo al PCA realizado:
+
+```{r fig.cap='Contribucion de los individuos a PC1 y PC2 con tratamiento de outliers'}
+fviz_contrib(pca_cardio, choice = "ind", axes = 1:2)
+```
+
+Ahora podemos quedarnos seguros de que el PCA que realizamos no esta siendo "absorbido" por el outlier 2.
+
+Continuaremos a analizar que sucede con la variable sexo.
+
+```{r fig.cap='PCs segun sexo'}
+cardio_pca <- data.frame(pca_cardio$x)
+cardio_pca$sexo <- cardio[-c(2), ]$sexo
+
+ggplot(melt(cardio_pca)) +
+  aes(x = variable, y = value, color = sexo) +
+  geom_boxplot() +
+  labs(x = '', y = '', title = 'Componentes segun sexo') +
+  facet_wrap(~variable, scale = 'free')
+```
+
+Revisando los boxplot de cada componente segun el sexo podemos determinar que individuos del sexo femeninos suelen poseer valores mas bajos de `PC1`, `PC2` que los del sexo masculino. Tambien podemos decir que suelen poseer valores mas altos en `PC3`, `PC7` que los masculinos. El resto de las PC son bastante similares entre sexos.
+
+
+# Clustering
+
+***
+
+<em>
+¿Existen distintos subgrupos de pacientes en los datos? 
+
+¿Cuántos logra identificar? 
+
+¿Qué características tienen? 
+
+Explique la metodología utilizada.
+</em>
+
+***
+
+```{r}
+cardio_numericas_std <- scale(cardio_numericas)
+```
+
+```{r}
+fviz_nbclust(cardio_numericas_std, kmeans, method = "silhouette") +
+  labs(title = "Número óptimo de clusters a considerar",
+       subtitle = "Indice Silhouette")
+
+```
+
+```{r}
+clustering <- kmeans(cardio_numericas_std, centers = 2)
+
+cardio$cluster <- factor(clustering$cluster)
+cardio_numericas$cluster <- factor(clustering$cluster)
+```
+
+```{r include=FALSE}
+plot_variable_numerica_cluster <- function(variable) {
+  mean_value <- mean(cardio[[variable]])
+  
+  ggplot(cardio) +
+    aes_string(x = 'cluster', y = variable) +
+    geom_boxplot() +
+    geom_hline(yintercept = mean_value, linetype = 'dashed') +
+    labs(x = "", y = "", title = "")
+}
+
+plot_variables_numericas_cluster <- function() {
+  columnas <- cardio_numericas %>% 
+    select(-'cluster') %>%
+    colnames() %>%  
+    sort()
+  
+  map(columnas, plot_variable_numerica_cluster)
+}
+```
+
+```{r fig.dim=c(10, 10)}
+total_plot <- ggarrange(plotlist = plot_variables_numericas_cluster(),
+                        labels = c("Col. Total", "Glicemia", "Col. HDL", "Hematocrito", "IMC", "Per. Abdominal", "Trigliceridos"),
+                        ncol = 3, nrow = 3)
+
+annotate_figure(total_plot, top = text_grob("Variables por Cluster", face = "bold", size = 16))
+```
+
+```{r}
+ggplot(cardio) +
+  aes_string(x = 'cluster', fill = 'sexo') +
+  geom_bar(position = 'fill', show.legend = FALSE) +
+  labs(x = "", y = "", title = "")
+```
+
+# Clasificacion
+
+```{r}
+cardio_clasificacion <- cardio %>% 
+  mutate(obesidad = as.factor(as.numeric(imc > 30)),
+         sexo_m = as.numeric(sexo == 'M')) %>% 
+  select(c('sexo_m', 'hto', 'glicemia', 'ct', 'hdl', 'tgd', 'obesidad'))
+```
+
+```{r}
+partition <- createDataPartition(y = cardio_clasificacion$obesidad, p = .7, list = FALSE)
+
+train_data <- cardio_clasificacion[partition, ]
+test_data <- cardio_clasificacion[-partition, ]
+```
+
+```{r}
+caret_control <- trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10)
+
+tree <- train(obesidad ~ .,
+              data = train_data,
+              method = "rpart",
+              trControl = caret_control,
+              tuneLength = 10)
+```
+
+```{r}
+tree
+```
+
+```{r}
+prp(tree$finalModel, extra = 101, type = 5, xsep = " / ", box.palette = "auto")
+```
+
+```{r}
+predictions <- as.vector(predict(tree$finalModel, newdata = test_data, type = "class"))
+mdl_auc <- auc(actual = test_data$obesidad, predicted = predictions)
+
+pred <- prediction(predict(tree$finalModel, 
+                           type = "prob", 
+                           newdata = test_data)[, 2],  
+                   test_data$obesidad)
+plot(performance(pred, "tpr", "fpr"), main = paste0("AUC = ", round(mdl_auc, 4)))
+abline(0, 1, lty = 2)
+```
+
+
+
