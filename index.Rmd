@@ -550,7 +550,9 @@ Construya la variable dicotómica ‘obesidad’ (índice de masa corporal mayor
 
 ***
 
-```{r}
+Agregamos la variable `obesidad` y filtramos por las del laboratorio:
+
+```{r include=FALSE}
 cardio_clasificacion <- cardio %>% 
   mutate(obesidad = as.factor(as.numeric(imc > 30)),
          sexo_m = as.numeric(sexo == 'M')) %>% 
@@ -558,33 +560,93 @@ cardio_clasificacion <- cardio %>%
 ```
 
 ```{r}
-partition <- createDataPartition(y = cardio_clasificacion$obesidad, p = .7, list = FALSE)
+cardio_clasificacion %>% 
+  format_table('Variables para realizar la clasificacion')
+```
+
+Como todo problema de entrenamiento supervisado, separamos el dataset en 70% de train y 30% de test.
+
+```{r}
+partition <- createDataPartition(y = cardio_clasificacion$obesidad, p = 0.7, list = FALSE)
 
 train_data <- cardio_clasificacion[partition, ]
 test_data <- cardio_clasificacion[-partition, ]
 ```
 
+_Eleccion del Modelo_
+
+Utilizaremos arboles de decision para poder predecir la variable `obesidad`. La idea de los arboles de decision es que dado un conjunto de datos, fabricar diagramas logicos que sirven para representar y categorizar una serie de condiciones que ocurren de manera sucesiva para la resolucion del problema. Son muy similares a los sistemas basados en reglas.
+
+Implementaremos mediante `caret` arboles `CART` y validacion cruzada o `k-folds`. Este ultimo consiste en tomar los datos originales y crear un conjunto de entrenamiento-prueba y uno de validacion. Durante cada entrenamiento, se tomara un conjunto de entrenamiento y validacion distinto.
+
+Visualmente:
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Iteracion</th>
+      <th colspan=5>Dataset</th>
+    </tr>
+  </thead>
+  <tr>
+    <td>Iteracion 1</td>
+    <td class="danger">Test</td>
+    <td colspan=4 class="info">Train</td>
+  <tr>
+  <tr>
+    <td>Iteracion 2</td>
+    <td class="info">Train</td>
+    <td class="danger">Test</td>
+    <td colspan=3 class="info">Train</td>
+  <tr>
+  <tr>
+    <td>Iteracion 3</td>
+    <td colspan=2 class="info">Train</td>
+    <td class="danger">Test</td>
+    <td colspan=2 class="info">Train</td>
+  <tr>
+  <tr>
+    <td>Iteracion 4</td>
+    <td colspan=3 class="info">Train</td>
+    <td class="danger">Test</td>
+    <td class="info">Train</td>
+  <tr>
+  <tr>
+    <td>Iteracion 5</td>
+    <td colspan=4 class="info">Train</td>
+    <td class="danger">Test</td>
+  <tr>
+</table>
+
+Los arboles CART poseen como hiperparametro el `cp` (Complexity Parameter), que controla el tamaño del arbol. Si el costo de agregar otra variable al arbol desde el nodo actual es mayor al valor de `cp`, entonces la construccion del arbol no continua.
+
+Configuramos caret para usar 10 k-folds, repetido 3 veces y le pedimos que varie el parametro `cp` de `rpart` en 15 valores distintos.
+
 ```{r}
 caret_control <- trainControl(method = "repeatedcv",
-                              number = 10,
-                              repeats = 10)
+                              number = 5,
+                              repeats = 5)
 
 tree <- train(obesidad ~ .,
               data = train_data,
               method = "rpart",
               trControl = caret_control,
               tuneLength = 10)
-```
 
-```{r}
 tree
 ```
 
-```{r}
+Caret nos creo 15 arboles, cada uno con un valor de `cp` distinto y elige el mejor. En este caso, el mejor arbol viene dado con $cp=0.0617284$.
+
+Visualizaremos el mejor arbol obtenido:
+
+```{r fig.cap='Arbol CART obtenido'}
 prp(tree$finalModel, extra = 101, type = 5, xsep = " / ", box.palette = "auto")
 ```
 
-```{r}
+Para determinar que tan bueno es nuestro arbol, utilizaremos la curva ROC y calcularemos el AUC.
+
+```{r fig.cap='Curva ROC del mejor arbol obtenido'}
 predictions <- as.vector(predict(tree$finalModel, newdata = test_data, type = "class"))
 mdl_auc <- auc(actual = test_data$obesidad, predicted = predictions)
 
@@ -596,5 +658,5 @@ plot(performance(pred, "tpr", "fpr"), main = paste0("AUC = ", round(mdl_auc, 4))
 abline(0, 1, lty = 2)
 ```
 
-
+El arbol obtenido posee un AUC de `r mdl_auc`.
 
