@@ -424,7 +424,7 @@ Como kmeans se basa en distancias, comenzaremos por estandarizar las variables n
 cardio_numericas_std <- scale(cardio_numericas)
 ```
 
-Utilizaremos el indice de silhouette para determinar la cantidad optima de _k_. El mismo es una medida que nos dice que tan similar es un individuo a su cluster comparado con los otros clusters. 
+Utilizaremos el indice de silhouette para determinar la cantidad optima de _k_. El mismo es una medida que nos dice que tan similar es un individuo a su cluster comparado con los otros clusters. Iremos variando la cantidad de clusters y calcularemos el promedio del indice con todos los individuos.
 
 ```{r fig.cap='Indice de Silhouette segun el numero de clusters a considerar'}
 fviz_nbclust(cardio_numericas_std, kmeans, method = "silhouette") +
@@ -432,7 +432,7 @@ fviz_nbclust(cardio_numericas_std, kmeans, method = "silhouette") +
        subtitle = "Indice Silhouette")
 ```
 
-Por lo tanto, utilizaremos $k=2$. Esto significa que estamos buscando dos grupos de personas con caracteristicas distintas entre si.
+Nos quedamos con el valor promedio mas alto. Por lo tanto, utilizaremos $k=2$. Esto significa que estamos buscando dos grupos de personas con caracteristicas distintas entre si.
 
 ```{r}
 clustering <- kmeans(cardio_numericas_std, centers = 2)
